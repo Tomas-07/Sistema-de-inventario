@@ -56,20 +56,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 <div class="alert alert-danger"><?= e($error) ?></div>
             <?php endif; ?>
 
-            <form method="post" novalidate>
+            <form method="post" class="needs-validation" novalidate>
                 <div class="mb-3">
                     <label class="form-label" for="correo">Correo</label>
                     <input class="form-control" type="email" id="correo" name="correo"
                            value="<?= e($correo) ?>" required autofocus>
+                    <div class="invalid-feedback">Ingresa un correo válido.</div>
                 </div>
                 <div class="mb-3">
                     <label class="form-label" for="clave">Clave</label>
                     <input class="form-control" type="password" id="clave" name="clave" required>
+                    <div class="invalid-feedback">Ingresa tu clave.</div>
                 </div>
                 <button class="btn btn-dark w-100" type="submit">Ingresar</button>
             </form>
         </div>
     </div>
 </div>
+<script src="<?= BASE_URL ?>/assets/js/validaciones.js"></script>
 </body>
 </html>
