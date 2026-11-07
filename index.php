@@ -1,77 +1,84 @@
 <?php
-// index.php (panel de inicio)
-require_once __DIR__ . '/includes/auth.php';
+// movimientos/index.php  (historial de entradas y salidas)
+require_once __DIR__ . '/../includes/auth.php';
 requiere_login();
 
-$titulo = 'Inicio';
+$titulo = 'Movimientos';
 
-$totalProductos  = $pdo->query('SELECT COUNT(*) FROM producto WHERE estado = 1')->fetchColumn();
-$totalCategorias = $pdo->query('SELECT COUNT(*) FROM categoria WHERE estado = 1')->fetchColumn();
+$idProducto = (int)($_GET['id_producto'] ?? 0);
 
-// Productos activos con stock bajo el mínimo (vista creada en el script SQL)
-$stockBajo = $pdo->query('SELECT * FROM vista_stock_bajo ORDER BY nombre')->fetchAll();
+$sql = 'SELECT m.*, p.codigo, p.nombre AS producto, u.nombre AS usuario
+        FROM movimiento m
+        JOIN producto p ON p.id_producto = m.id_producto
+        JOIN usuario  u ON u.id_usuario  = m.id_usuario';
+$params = [];
+if ($idProducto > 0) {
+    $sql .= ' WHERE m.id_producto = ?';
+    $params[] = $idProducto;
+}
+$sql .= ' ORDER BY m.fecha_hora DESC, m.id_movimiento DESC LIMIT 100';
 
-require __DIR__ . '/includes/header.php';
+$st = $pdo->prepare($sql);
+$st->execute($params);
+$movimientos = $st->fetchAll();
+
+$productos = $pdo->query('SELECT id_producto, codigo, nombre FROM producto ORDER BY nombre')->fetchAll();
+
+require __DIR__ . '/../includes/header.php';
 ?>
-<div class="d-flex justify-content-between align-items-center mb-4">
-    <h1 class="h3 mb-0">Hola, <?= e($_SESSION['nombre']) ?></h1>
-    <a class="btn btn-dark" href="<?= BASE_URL ?>/movimientos/form.php">Registrar movimiento</a>
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h1 class="h3 mb-0">Movimientos de inventario</h1>
+    <a class="btn btn-dark" href="form.php">Registrar movimiento</a>
 </div>
 
-<div class="row g-3 mb-4">
-    <div class="col-md-4">
-        <div class="card shadow-sm"><div class="card-body">
-            <div class="text-muted">Productos activos</div>
-            <div class="display-6"><?= (int)$totalProductos ?></div>
-            <a href="<?= BASE_URL ?>/productos/index.php" class="stretched-link">Ver productos</a>
-        </div></div>
+<form class="row g-2 mb-3" method="get">
+    <div class="col-md-6">
+        <select class="form-select" name="id_producto" onchange="this.form.submit()">
+            <option value="0">Todos los productos</option>
+            <?php foreach ($productos as $p): ?>
+                <option value="<?= (int)$p['id_producto'] ?>" <?= $idProducto === (int)$p['id_producto'] ? 'selected' : '' ?>>
+                    <?= e($p['codigo']) ?> · <?= e($p['nombre']) ?>
+                </option>
+            <?php endforeach; ?>
+        </select>
     </div>
-    <div class="col-md-4">
-        <div class="card shadow-sm"><div class="card-body">
-            <div class="text-muted">Categorías activas</div>
-            <div class="display-6"><?= (int)$totalCategorias ?></div>
-            <a href="<?= BASE_URL ?>/categorias/index.php" class="stretched-link">Ver categorías</a>
-        </div></div>
-    </div>
-    <div class="col-md-4">
-        <div class="card shadow-sm <?= $stockBajo ? 'border-danger' : '' ?>"><div class="card-body">
-            <div class="text-muted">Con stock bajo</div>
-            <div class="display-6 <?= $stockBajo ? 'text-danger' : '' ?>"><?= count($stockBajo) ?></div>
-            <a href="<?= BASE_URL ?>/productos/index.php?bajo=1" class="stretched-link">Ver detalle</a>
-        </div></div>
-    </div>
-</div>
+    <?php if ($idProducto > 0): ?>
+        <div class="col-auto"><a class="btn btn-link" href="index.php">Limpiar</a></div>
+    <?php endif; ?>
+</form>
 
-<?php if ($stockBajo): ?>
-<div class="card shadow-sm border-danger">
-    <div class="card-header bg-danger text-white">Productos que necesitan reposición</div>
+<div class="card shadow-sm">
     <div class="table-responsive">
-        <table class="table align-middle mb-0">
+        <table class="table table-hover align-middle mb-0">
             <thead class="table-light">
-                <tr><th>Código</th><th>Nombre</th><th>Categoría</th>
-                    <th class="text-end">Stock</th><th class="text-end">Mínimo</th><th></th></tr>
+                <tr>
+                    <th>Fecha</th><th>Producto</th><th>Tipo</th>
+                    <th class="text-end">Cantidad</th><th>Observación</th><th>Usuario</th>
+                </tr>
             </thead>
             <tbody>
-            <?php foreach ($stockBajo as $p): ?>
+            <?php foreach ($movimientos as $m): ?>
                 <tr>
-                    <td><?= e($p['codigo']) ?></td>
-                    <td><?= e($p['nombre']) ?></td>
-                    <td><?= e($p['categoria']) ?></td>
-                    <td class="text-end text-danger fw-bold"><?= (int)$p['stock_actual'] ?></td>
-                    <td class="text-end"><?= (int)$p['stock_minimo'] ?></td>
-                    <td class="text-end">
-                        <a class="btn btn-sm btn-outline-success"
-                           href="<?= BASE_URL ?>/movimientos/form.php?id_producto=<?= (int)$p['id_producto'] ?>&tipo=ENTRADA">
-                            Registrar entrada
-                        </a>
+                    <td><?= e(date('d-m-Y H:i', strtotime($m['fecha_hora']))) ?></td>
+                    <td><?= e($m['codigo']) ?> · <?= e($m['producto']) ?></td>
+                    <td>
+                        <?php if ($m['tipo'] === 'ENTRADA'): ?>
+                            <span class="badge text-bg-success">Entrada</span>
+                        <?php else: ?>
+                            <span class="badge text-bg-warning">Salida</span>
+                        <?php endif; ?>
                     </td>
+                    <td class="text-end"><?= $m['tipo'] === 'ENTRADA' ? '+' : '−' ?><?= (int)$m['cantidad'] ?></td>
+                    <td><?= e($m['observacion']) ?></td>
+                    <td><?= e($m['usuario']) ?></td>
                 </tr>
             <?php endforeach; ?>
+            <?php if (!$movimientos): ?>
+                <tr><td colspan="6" class="text-center text-muted py-4">No hay movimientos registrados.</td></tr>
+            <?php endif; ?>
             </tbody>
         </table>
     </div>
 </div>
-<?php else: ?>
-    <div class="alert alert-success mb-0">Todos los productos activos están sobre su stock mínimo.</div>
-<?php endif; ?>
-<?php require __DIR__ . '/includes/footer.php'; ?>
+<p class="text-muted small mt-2">Se muestran los 100 movimientos más recientes.</p>
+<?php require __DIR__ . '/../includes/footer.php'; ?>
